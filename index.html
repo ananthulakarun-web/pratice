@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ANATOMY-X — Interactive Human Anatomy Explorer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter','ui-sans-serif','system-ui'] },
+      colors: { ink:'#080b10', panel:'#0d1219', line:'#202936', cyan:'#55d6ff' }
+    }
+  }
+}
+</script>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.180.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.180.0/examples/jsm/"}}
+</script>
+<style>
+html,body{margin:0;background:#080b10;color:#eef4f8;font-family:Inter,system-ui,sans-serif}
+*{box-sizing:border-box}
+.glass{background:rgba(13,18,25,.82);backdrop-filter:blur(18px);border:1px solid #202936}
+.gridbg{background-image:linear-gradient(rgba(90,130,160,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(90,130,160,.045) 1px,transparent 1px);background-size:40px 40px}
+button,input{font:inherit}
+button{transition:.18s ease}
+button:hover{transform:translateY(-1px)}
+.pill{border:1px solid #273340;background:#111821}
+.pill.active{border-color:#55d6ff55;background:#10202a;color:#8be5ff}
+.range{accent-color:#55d6ff}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:#26313e;border-radius:10px}
+</style>
+</head>
+<body>
+<div class="min-h-screen gridbg">
+<header class="h-16 border-b border-[#202936] flex items-center justify-between px-5 md:px-8 bg-[#080b10]/90 backdrop-blur-xl sticky top-0 z-50">
+  <div class="flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl border border-cyan/30 bg-cyan/5 grid place-items-center text-cyan font-bold">AX</div>
+    <div><div class="font-semibold tracking-[.18em] text-sm">ANATOMY-X</div><div class="text-[10px] text-slate-500 tracking-widest">HUMAN ANATOMY EXPLORER</div></div>
+  </div>
+  <nav class="hidden md:flex gap-1 text-sm">
+    <button class="px-4 py-2 rounded-lg text-slate-400 hover:text-white" onclick="showTab('explore')">Explore</button>
+    <button class="px-4 py-2 rounded-lg text-slate-400 hover:text-white" onclick="showTab('systems')">Systems</button>
+    <button class="px-4 py-2 rounded-lg text-slate-400 hover:text-white" onclick="showTab('parts')">Parts</button>
+    <button class="px-4 py-2 rounded-lg bg-[#111821] text-white border border-[#273340]" onclick="showTab('explode')">/explodeview</button>
+  </nav>
+  <button onclick="toggleHelp()" class="text-xs px-3 py-2 rounded-lg pill text-slate-300">Controls</button>
+</header>
+
+<main class="max-w-[1600px] mx-auto p-4 md:p-6">
+<section id="explode" class="tab">
+  <div class="flex flex-col lg:flex-row justify-between gap-4 mb-5">
+    <div>
+      <div class="text-[11px] tracking-[.25em] text-cyan uppercase mb-2">Interactive visualization</div>
+      <h1 class="text-2xl md:text-4xl font-semibold tracking-tight">Exploded anatomy view</h1>
+      <p class="text-slate-500 mt-2 max-w-2xl text-sm">Explore anatomical layers as a structured 3D model. This prototype uses a visual demo scene; replace it with a medically verified GLB/GLTF model for production use.</p>
+    </div>
+    <div class="flex gap-2 self-start">
+      <button id="xrayBtn" onclick="toggleXray()" class="pill rounded-xl px-4 py-2 text-sm text-slate-300">X-Ray</button>
+      <button onclick="resetAll()" class="pill rounded-xl px-4 py-2 text-sm text-slate-300">↺ Reset</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-[260px_minmax(0,1fr)_310px] gap-4">
+    <aside class="glass rounded-2xl p-4 h-fit">
+      <div class="text-[10px] uppercase tracking-[.2em] text-slate-500 mb-3">Anatomical systems</div>
+      <div id="systemsList" class="space-y-1"></div>
+      <div class="h-px bg-[#202936] my-5"></div>
+      <div class="text-[10px] uppercase tracking-[.2em] text-slate-500 mb-3">Layers</div>
+      <div id="layersList" class="space-y-2"></div>
+    </aside>
+
+    <section class="glass rounded-2xl overflow-hidden min-h-[650px] relative">
+      <div class="absolute left-4 top-4 z-10 flex items-center gap-2">
+        <span class="px-2.5 py-1 rounded-full bg-[#101720] border border-[#25313d] text-[10px] text-slate-400">DEMO MODEL</span>
+        <span id="status" class="px-2.5 py-1 rounded-full bg-[#101720] border border-[#25313d] text-[10px] text-cyan">READY</span>
+      </div>
+      <div id="viewer" class="absolute inset-0"></div>
+      <div class="absolute bottom-4 left-4 right-4 z-10 glass rounded-xl p-3">
+        <div class="flex justify-between text-[10px] uppercase tracking-widest text-slate-500 mb-2"><span>Explosion amount</span><span id="expVal">42%</span></div>
+        <input id="explosion" class="range w-full" type="range" min="0" max="100" value="42" oninput="setExplosion(this.value)">
+        <div class="flex justify-between text-[9px] text-slate-600 mt-1"><span>Assembled</span><span>Separated</span></div>
+      </div>
+      <div class="absolute right-4 bottom-24 z-10 flex flex-col gap-2">
+        <button onclick="focusBody()" class="w-10 h-10 rounded-xl glass text-slate-300" title="Focus">⌖</button>
+        <button onclick="toggleLabels()" id="labelsBtn" class="w-10 h-10 rounded-xl glass text-slate-300" title="Labels">Aa</button>
+        <button onclick="toggleSpin()" id="spinBtn" class="w-10 h-10 rounded-xl glass text-slate-300" title="Auto rotate">↻</button>
+      </div>
+    </section>
+
+    <aside class="glass rounded-2xl p-5 h-fit">
+      <div class="flex justify-between items-center mb-4">
+        <div><div class="text-[10px] uppercase tracking-[.2em] text-slate-500">Selected structure</div><h2 id="partName" class="text-xl font-semibold mt-1">Heart</h2></div>
+        <span id="partDot" class="w-3 h-3 rounded-full bg-cyan shadow-[0_0_18px_#55d6ff]"></span>
+      </div>
+      <div class="text-xs text-cyan mb-5" id="partSystem">Cardiovascular system</div>
+      <div class="space-y-5 text-sm">
+        <div><div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Function</div><p id="partFunction" class="text-slate-300 leading-6">Pumps blood through the circulatory system.</p></div>
+        <div><div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Location</div><p id="partLocation" class="text-slate-300">Thoracic cavity</p></div>
+        <div><div class="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Related structures</div><div id="related" class="flex flex-wrap gap-2"></div></div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 mt-7">
+        <button onclick="isolateSelected()" class="rounded-xl bg-cyan text-[#061016] font-semibold py-2.5 text-sm">Isolate</button>
+        <button onclick="hideSelected()" class="pill rounded-xl py-2.5 text-sm text-slate-300">Hide</button>
+      </div>
+      <div class="mt-6 pt-5 border-t border-[#202936] text-[10px] leading-5 text-slate-600">Educational visualization only. Anatomy shown here is a prototype representation, not a diagnostic or clinical tool.</div>
+    </aside>
+  </div>
+</section>
+
+<section id="explore" class="tab hidden">
+  <div class="max-w-5xl py-10">
+    <div class="text-cyan text-xs tracking-[.25em] uppercase mb-4">ANATOMY-X</div>
+    <h1 class="text-5xl md:text-7xl font-semibold tracking-tight max-w-3xl">Explore the human body.</h1>
+    <p class="text-slate-400 mt-6 text-lg max-w-2xl">An interactive 3D anatomy experience for understanding structures, systems and relationships layer by layer.</p>
+    <div class="flex gap-3 mt-8"><button onclick="showTab('explode')" class="rounded-xl bg-cyan text-[#061016] font-semibold px-6 py-3">Open Exploded View</button><button onclick="showTab('systems')" class="pill rounded-xl px-6 py-3">Browse Systems</button></div>
+    <div class="grid md:grid-cols-3 gap-4 mt-16">
+      <div class="glass rounded-2xl p-5"><div class="text-cyan text-xl mb-5">◉</div><h3 class="font-semibold">Interactive 3D</h3><p class="text-sm text-slate-500 mt-2">Rotate, zoom, isolate and inspect structures.</p></div>
+      <div class="glass rounded-2xl p-5"><div class="text-cyan text-xl mb-5">⌁</div><h3 class="font-semibold">Layer visualization</h3><p class="text-sm text-slate-500 mt-2">Move from surface anatomy toward deeper systems.</p></div>
+      <div class="glass rounded-2xl p-5"><div class="text-cyan text-xl mb-5">⌕</div><h3 class="font-semibold">Anatomy search</h3><p class="text-sm text-slate-500 mt-2">Find a structure and focus the 3D viewer instantly.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="systems" class="tab hidden">
+  <div class="py-6"><div class="text-cyan text-xs tracking-[.25em] uppercase">Systems</div><h1 class="text-3xl font-semibold mt-2">Anatomical systems</h1><div id="systemCards" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-8"></div></div>
+</section>
+
+<section id="parts" class="tab hidden">
+  <div class="py-6"><div class="flex flex-col md:flex-row md:items-end justify-between gap-4"><div><div class="text-cyan text-xs tracking-[.25em] uppercase">Parts library</div><h1 class="text-3xl font-semibold mt-2">Structures</h1></div><input id="search" oninput="renderParts()" placeholder="Search anatomy..." class="pill rounded-xl px-4 py-3 outline-none w-full md:w-80 text-sm"></div><div id="partsGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-8"></div></div>
+</section>
+</main>
+
+<div id="help" class="hidden fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm grid place-items-center p-5" onclick="toggleHelp()">
+ <div class="glass rounded-2xl p-6 max-w-md w-full" onclick="event.stopPropagation()">
+  <div class="text-xs text-cyan tracking-widest">CONTROLS</div><h2 class="text-2xl font-semibold mt-1">Navigate the viewer</h2>
+  <div class="grid grid-cols-2 gap-3 mt-6 text-sm">
+   <div class="pill rounded-xl p-3"><b>Drag</b><div class="text-slate-500">Rotate model</div></div>
+   <div class="pill rounded-xl p-3"><b>Scroll</b><div class="text-slate-500">Zoom</div></div>
+   <div class="pill rounded-xl p-3"><b>E</b><div class="text-slate-500">Explode</div></div>
+   <div class="pill rounded-xl p-3"><b>X</b><div class="text-slate-500">X-Ray</div></div>
+   <div class="pill rounded-xl p-3"><b>L</b><div class="text-slate-500">Labels</div></div>
+   <div class="pill rounded-xl p-3"><b>R</b><div class="text-slate-500">Reset</div></div>
+  </div>
+  <button onclick="toggleHelp()" class="w-full mt-6 rounded-xl bg-cyan text-[#061016] font-semibold py-3">Close</button>
+ </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+
+const structures = [
+ {id:'heart',name:'Heart',system:'Cardiovascular',function:'Pumps blood through the circulatory system.',location:'Thoracic cavity',related:['Aorta','Lungs','Left atrium'],layer:4,color:0x55d6ff},
+ {id:'lungs',name:'Lungs',system:'Respiratory',function:'Exchange oxygen and carbon dioxide between air and blood.',location:'Thoracic cavity',related:['Trachea','Heart','Diaphragm'],layer:4,color:0x91a9ff},
+ {id:'brain',name:'Brain',system:'Nervous',function:'Coordinates sensation, movement, cognition and many body functions.',location:'Cranial cavity',related:['Spinal cord','Cerebellum'],layer:4,color:0xd8a6ff},
+ {id:'liver',name:'Liver',system:'Digestive',function:'Performs metabolic, digestive and detoxification functions.',location:'Upper right abdomen',related:['Gallbladder','Stomach'],layer:4,color:0xff9f8f},
+ {id:'stomach',name:'Stomach',system:'Digestive',function:'Mixes food and begins chemical digestion.',location:'Upper abdomen',related:['Esophagus','Liver','Pancreas'],layer:4,color:0xffb06b},
+ {id:'femur',name:'Femur',system:'Skeletal',function:'Major weight-bearing bone of the thigh.',location:'Thigh',related:['Hip','Knee'],layer:2,color:0xe5e7eb},
+ {id:'spine',name:'Spine',system:'Skeletal',function:'Supports the body and protects the spinal cord.',location:'Posterior trunk',related:['Skull','Pelvis'],layer:2,color:0xe5e7eb},
+ {id:'muscle',name:'Major muscle layer',system:'Muscular',function:'Generates force for movement and stabilizes the body.',location:'Throughout the body',related:['Skeleton','Tendons'],layer:3,color:0xd96d7b}
+];
+const systems = ['All Systems','Skeletal','Muscular','Nervous','Cardiovascular','Respiratory','Digestive','Urinary','Endocrine','Reproductive','Lymphatic'];
+const layers = [{n:'Skin',v:1},{n:'Skeleton',v:2},{n:'Muscles',v:3},{n:'Organs',v:4}];
+
+const viewer = document.getElementById('viewer');
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x080b10);
+const camera = new THREE.PerspectiveCamera(45,1,.1,100); camera.position.set(0,1.3,8);
+const renderer = new THREE.WebGLRenderer({antialias:true,alpha:true}); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.outputColorSpace=THREE.SRGBColorSpace; viewer.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera,renderer.domElement); controls.enableDamping=true; controls.target.set(0,1,0);
+
+scene.add(new THREE.HemisphereLight(0x9edcff,0x10141c,2));
+const key = new THREE.DirectionalLight(0xffffff,3); key.position.set(4,7,6); scene.add(key);
+const rim = new THREE.PointLight(0x55d6ff,12,18); rim.position.set(-4,3,3); scene.add(rim);
+
+const model = new THREE.Group(); scene.add(model);
+const meshes = {};
+function mat(color,opacity=1){return new THREE.MeshPhysicalMaterial({color,roughness:.38,metalness:.05,transparent:opacity<1,opacity,clearcoat:.25});}
+function add(name,geo,pos,scale,color,layer){
+ const m=new THREE.Mesh(geo,mat(color)); m.position.copy(pos); m.scale.copy(scale); m.userData={id:name,base:pos.clone(),layer}; model.add(m); meshes[name]=m; return m;
+}
+const sphere=new THREE.SphereGeometry(1,32,24), capsule=new THREE.CapsuleGeometry(.45,1.4,12,24), box=new THREE.BoxGeometry(1,1,1), cyl=new THREE.CylinderGeometry(.16,.16,1.5,20);
+
+// Stylized demo anatomy, deliberately labeled as demo.
+add('brain',sphere,new THREE.Vector3(0,3.15,0),new THREE.Vector3(.72,.62,.58),0xd8a6ff,4);
+add('heart',sphere,new THREE.Vector3(.18,1.72,-.45),new THREE.Vector3(.38,.48,.3),0x55d6ff,4);
+add('lungs',new THREE.SphereGeometry(1,24,18),new THREE.Vector3(-.45,1.72,.02),new THREE.Vector3(.45,.68,.32),0x91a9ff,4);
+add('liver',sphere,new THREE.Vector3(.48,.92,.02),new THREE.Vector3(.72,.32,.4),0xff9f8f,4);
+add('stomach',sphere,new THREE.Vector3(-.48,.88,-.04),new THREE.Vector3(.42,.36,.32),0xffb06b,4);
+add('spine',cyl,new THREE.Vector3(0,1.2,.34),new THREE.Vector3(.35,1.7,.35),0xe5e7eb,2);
+add('femur',cyl,new THREE.Vector3(-.32,-.45,0),new THREE.Vector3(.25,1.55,.25),0xe5e7eb,2);
+add('muscle',capsule,new THREE.Vector3(0,.1,.18),new THREE.Vector3(1.05,1.65,.62),0xd96d7b,3);
+add('skin',capsule,new THREE.Vector3(0,.45,.05),new THREE.Vector3(1.18,2.05,.7),0x9d6f62,1);
+
+let explosion=.42, xray=false, labels=false, spin=false, selected='heart', isolated=null;
+function apply(){
+ for(const m of Object.values(meshes)){
+   const dir=new THREE.Vector3(m.userData.base.x*.35,m.userData.base.y-0.8,m.userData.base.z*1.3);
+   const amount=explosion*(m.userData.layer===1?1.3:m.userData.layer===2?1.0:m.userData.layer===3?.8:.55);
+   m.position.copy(m.userData.base).add(dir.multiplyScalar(amount));
+   m.material.opacity=xray?(m.userData.layer<=2?.18:.82):1;
+   m.material.transparent=xray || m.material.opacity<1;
+   m.visible=isolated?m.userData.id===isolated:true;
+ }
+}
+window.setExplosion=v=>{explosion=Number(v)/100; document.getElementById('expVal').textContent=v+'%'; apply()};
+window.toggleXray=()=>{xray=!xray; document.getElementById('xrayBtn').classList.toggle('active',xray);apply()};
+window.toggleLabels=()=>{labels=!labels;document.getElementById('labelsBtn').classList.toggle('active',labels)};
+window.toggleSpin=()=>{spin=!spin;document.getElementById('spinBtn').classList.toggle('active',spin)};
+window.isolateSelected=()=>{isolated=selected;apply();status('ISOLATED')};
+window.hideSelected=()=>{meshes[selected].visible=false;status('HIDDEN')};
+window.focusBody=()=>{controls.target.set(0,1,0);camera.position.set(0,1.3,8);controls.update()};
+window.resetAll=()=>{explosion=.42;document.getElementById('explosion').value=42;document.getElementById('expVal').textContent='42%';xray=false;isolated=null;for(const m of Object.values(meshes))m.visible=true;apply();status('READY');window.focusBody()};
+function status(t){document.getElementById('status').textContent=t}
+function select(id){
+ selected=id; const s=structures.find(x=>x.id===id); if(!s)return;
+ document.getElementById('partName').textContent=s.name;document.getElementById('partSystem').textContent=s.system+' system';
+ document.getElementById('partFunction').textContent=s.function;document.getElementById('partLocation').textContent=s.location;
+ document.getElementById('related').innerHTML=s.related.map(x=>`<span class="pill rounded-full px-2.5 py-1 text-[10px] text-slate-400">${x}</span>`).join('');
+ status('SELECTED');
+}
+const raycaster=new THREE.Raycaster(), pointer=new THREE.Vector2();
+renderer.domElement.addEventListener('pointerdown',e=>{
+ const r=renderer.domElement.getBoundingClientRect(); pointer.x=((e.clientX-r.left)/r.width)*2-1;pointer.y=-((e.clientY-r.top)/r.height)*2+1;
+ raycaster.setFromCamera(pointer,camera);const hits=raycaster.intersectObjects(model.children,false);if(hits[0])select(hits[0].object.userData.id);
+});
+function resize(){const w=viewer.clientWidth,h=viewer.clientHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false)} window.addEventListener('resize',resize);resize();
+function animate(){requestAnimationFrame(animate);if(spin)model.rotation.y+=.002;controls.update();renderer.render(scene,camera)}animate();
+
+document.getElementById('systemsList').innerHTML=systems.map((s,i)=>`<button onclick="filterSystem('${s}')" class="systemBtn w-full text-left px-3 py-2 rounded-lg text-sm ${i===0?'active pill text-white':'text-slate-500 hover:text-slate-200'}">${s}</button>`).join('');
+document.getElementById('layersList').innerHTML=layers.map(l=>`<label class="flex items-center gap-2 text-sm text-slate-400 cursor-pointer"><input type="checkbox" checked onchange="toggleLayer(${l.v},this.checked)"> ${l.n}</label>`).join('');
+window.filterSystem=(s)=>{document.querySelectorAll('.systemBtn').forEach(b=>b.classList.toggle('active',b.textContent.trim()===s));if(s==='All Systems'){Object.values(meshes).forEach(m=>m.visible=true)}else Object.values(meshes).forEach(m=>{const d=structures.find(x=>x.id===m.userData.id);m.visible=d?.system===s});};
+window.toggleLayer=(v,on)=>{Object.values(meshes).forEach(m=>{if(m.userData.layer===v)m.visible=on})};
+
+window.showTab=(id)=>{
+ document.querySelectorAll('.tab').forEach(x=>x.classList.add('hidden'));document.getElementById(id).classList.remove('hidden');
+ if(id==='systems')renderSystemCards();if(id==='parts')renderParts();
+ if(id==='explode')setTimeout(resize,30);
+};
+window.renderSystemCards=()=>{document.getElementById('systemCards').innerHTML=systems.slice(1).map(s=>`<button onclick="showTab('explode');filterSystem('${s}')" class="glass rounded-2xl p-5 text-left hover:border-[#3a4c5d]"><div class="text-cyan text-lg">◉</div><div class="font-semibold mt-4">${s}</div><div class="text-xs text-slate-500 mt-1">${structures.filter(x=>x.system===s).length} demo structures</div></button>`).join('')};
+window.renderParts=()=>{const q=(document.getElementById('search')?.value||'').toLowerCase();document.getElementById('partsGrid').innerHTML=structures.filter(s=>s.name.toLowerCase().includes(q)||s.system.toLowerCase().includes(q)).map(s=>`<button onclick="showTab('explode');select('${s.id}')" class="glass rounded-2xl p-4 text-left hover:border-[#3a4c5d]"><div class="flex justify-between"><span class="font-medium">${s.name}</span><span class="text-[10px] text-cyan">${s.system}</span></div><p class="text-xs text-slate-500 mt-2">${s.function}</p></button>`).join('')};
+window.toggleHelp=()=>document.getElementById('help').classList.toggle('hidden');
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key.toLowerCase()==='e'){const v=Math.round((explosion+0.1)*100);setExplosion(Math.min(v,100))}if(e.key.toLowerCase()==='x')toggleXray();if(e.key.toLowerCase()==='l')toggleLabels();if(e.key.toLowerCase()==='r')resetAll()});
+select('heart');apply();renderSystemCards();renderParts();
+</script>
+</body>
+</html>
